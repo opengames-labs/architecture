@@ -2,12 +2,19 @@ specification {
   element system
   element container
   element component
+  element client
 }
 
 model {
+    browser = client 'Browser' {
+        style {
+            shape browser
+        }
+    }
+
     app = container 'App' {
-        technology 'Fastify / Node.js / Alpine Linux'
-        icon tech:fastify
+        technology 'Node.js / Alpine Linux'
+        icon tech:nodejs
 
         frontend = component 'Frontend' {
             technology 'React'
@@ -22,7 +29,10 @@ model {
         server -> frontend 'serves'
     }
 
-    runtime = container 'Runtime'
+    runtime = container 'Runtime' {
+        technology 'Node.js'
+        icon tech:nodejs
+    }
 
     database = container 'Database' {
         technology 'PostgreSQL'
@@ -51,5 +61,33 @@ model {
     smtp = container 'SMTP Server' {
         technology 'SMTP'
         icon bootstrap:envelope
+    }
+
+    browser -> app.server 'Request frontend' {
+        technology 'HTTPS'
+    }
+
+    browser -> app.server 'API' {
+        technology 'HTTPS'
+    }
+
+    browser -> app.server 'Chat / Lobby' {
+        technology 'WebSocket'
+    }
+
+    browser -> app.server 'Colyseus Gameplay' {
+        technology 'WebSocket'
+    }
+
+    app -> runtime 'Manage Rooms' {
+        technology 'HTTP'
+    }
+
+    app -> runtime 'Proxy Client Game Connection' {
+        technology 'WebSocket'
+    }
+
+    runtime -> app 'Load plugins, Report readiness, Save/restore games, Submit results' {
+        technology 'HTTP'
     }
 }

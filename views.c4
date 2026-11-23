@@ -2,9 +2,18 @@ views {
   view index {
     include *
 
+    include app <-> runtime with {
+      multiple true
+    }
+
+    include browser <-> app.server with {
+      multiple true
+    }
+
     style database, valkey, bucket, smtp {
       color muted
     }
+    autoLayout LeftRight
   }
 
   view app of app {
