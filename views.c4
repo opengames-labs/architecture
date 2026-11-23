@@ -19,4 +19,10 @@ views {
   view app of app {
     include *
   }
+
+  dynamic view gameplay_proxy {
+    title 'Gameplay connection'
+    browser -[colyseus]-> app 'Gameplay connection'
+    app -[colyseus]-> runtime 'Gameplay connection'
+  }
 }

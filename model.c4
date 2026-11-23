@@ -3,6 +3,18 @@ specification {
   element container
   element component
   element client
+  relationship http {
+    color blue
+    line solid
+  }
+  relationship socketio {
+    color amber
+    line dashed
+  }
+  relationship colyseus {
+    color green
+    line dashed
+  }
 }
 
 model {
@@ -63,31 +75,33 @@ model {
         icon bootstrap:envelope
     }
 
-    browser -> app.server 'Request frontend' {
+    browser -[http]-> app.server 'Request frontend' {
         technology 'HTTPS'
     }
 
-    browser -> app.server 'API' {
+    browser -[http]-> app.server 'API' {
         technology 'HTTPS'
     }
 
-    browser -> app.server 'Chat / Lobby' {
-        technology 'WebSocket'
+    browser -[socketio]-> app.server 'Chat / Lobby' {
+        technology 'Socket.IO'
     }
 
-    browser -> app.server 'Colyseus Gameplay' {
-        technology 'WebSocket'
+    browser -[colyseus]-> app.server 'Gameplay connection' {
+        technology 'Colyseus / WebSocket'
+        description 'Gameplay data flows through App to the owning Runtime process.'
     }
 
-    app -> runtime 'Manage Rooms' {
+    app -[http]-> runtime 'Manage Rooms' {
         technology 'HTTP'
     }
 
-    app -> runtime 'Proxy Client Game Connection' {
-        technology 'WebSocket'
+    app -[colyseus]-> runtime 'Gameplay connection' {
+        technology 'Colyseus / WebSocket'
+        description 'App proxies the same gameplay data between the browser and the owning Runtime process.'
     }
 
-    runtime -> app 'Load plugins, Report readiness, Save/restore games, Submit results' {
+    runtime -[http]-> app 'Load plugins, Report readiness, Save/restore games, Submit results' {
         technology 'HTTP'
     }
 }
