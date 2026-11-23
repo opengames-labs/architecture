@@ -1,0 +1,55 @@
+specification {
+  element system
+  element container
+  element component
+}
+
+model {
+    app = container 'App' {
+        technology 'Fastify / Node.js / Alpine Linux'
+        icon tech:fastify
+
+        frontend = component 'Frontend' {
+            technology 'React'
+            icon tech:react
+        }
+
+        server = component 'Web Server' {
+            technology 'Fastify'
+            icon tech:fastify
+        }
+
+        server -> frontend 'serves'
+    }
+
+    runtime = container 'Runtime'
+
+    database = container 'Database' {
+        technology 'PostgreSQL'
+        icon tech:postgresql
+        style {
+            shape storage
+        }
+    }
+
+    valkey = container 'Valkey' {
+        technology 'Valkey'
+        icon https://valkey.io/img/Valkey-logo.svg
+        style {
+            shape storage
+        }
+    }
+
+    bucket = container 'S3 Bucket' {
+        technology 'Amazon S3'
+        icon aws:simple-storage-service
+        style {
+            shape bucket
+        }
+    }
+
+    smtp = container 'SMTP Server' {
+        technology 'SMTP'
+        icon bootstrap:envelope
+    }
+}

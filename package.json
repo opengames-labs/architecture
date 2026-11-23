@@ -1,0 +1,15 @@
+{
+  "name": "opengames-architecture",
+  "private": true,
+  "scripts": {
+    "dev": "likec4 start",
+    "build": "likec4 build",
+    "validate": "likec4 validate"
+  },
+  "engines": {
+    "node": ">=22.23.3"
+  },
+  "devDependencies": {
+    "likec4": "^1.61.1"
+  }
+}

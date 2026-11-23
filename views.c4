@@ -1,0 +1,13 @@
+views {
+  view index {
+    include *
+
+    style database, valkey, bucket, smtp {
+      color muted
+    }
+  }
+
+  view app of app {
+    include *
+  }
+}
