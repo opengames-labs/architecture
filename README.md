@@ -18,11 +18,21 @@ It documents HTTP, Socket.IO, and Colyseus/WebSocket communication, including th
 
 ## Views
 
-- `index`: Overall architecture and relationships
-- `app`: Detailed view of the application components
-- `gameplay_proxy`: Dynamic gameplay connection flow
+- `index`: Container landscape and protocol boundaries
+- `context`: System context with actors and external services
+- `browser`: Two-origin browser boundary (`play.*` shell vs. `games.*` iframe & engines)
+- `app`: Detailed view of the 9 application modules
+- `runtime`: Game server runtime components and boundaries
+- `valkey`: Valkey coordination namespaces and callers
+- `ecosystem`: Plugin authoring, SDKs/CLI, GitHub catalogs/releases, and GHCR images
+- `gameplay_proxy`: Dynamic gameplay connection proxy flow
+- `flow_install`: Sequence flow for plugin installation and pool activation
+- `flow_join`: Sequence flow for match join and targeted room routing
+- `flow_restore`: Sequence flow for crash recovery and snapshot restore
+- `deploy_docker`: Single-host Docker Compose deployment
+- `deploy_kubernetes`: Multi-replica Kubernetes deployment
 
-The sources are defined in `model.c4` and `views.c4`.
+The sources are split across `specification.c4`, `model*.c4`, `views.c4`, `flows.c4`, and `deployment.c4`.
 
 ## Requirements
 
