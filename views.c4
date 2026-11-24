@@ -1,28 +1,195 @@
 views {
   view index {
-    include *
+    title 'Container Landscape'
+    description 'High-level runtime containers and data boundaries of OpenGames. Click any container to drill into its internals.'
 
-    include app <-> runtime with {
+    include browser, app, runtime, database, valkey, bucket, smtp, github
+
+    include browser -> app with {
       multiple true
     }
 
-    include browser <-> app.server with {
+    include browser -> app where kind is http with {
+      title 'Frontend, REST API & game assets'
+      technology 'HTTPS (play.* & games.*)'
+    }
+
+    include browser -> app where kind is colyseus with {
+      title 'Gameplay connection'
+      technology 'Colyseus / WebSocket'
+    }
+
+    exclude * -> * where tag is #detail
+
+    include app -> runtime with {
       multiple true
     }
 
-    style database, valkey, bucket, smtp {
+    include runtime -> app with {
+      title 'Plugins, readiness, snapshots & results'
+      technology 'Authenticated Runtime API'
+    }
+
+    include app -> valkey with {
+      title 'Events, jobs, routing lookup & limits'
+      technology 'Valkey (scoped ACL)'
+    }
+
+    include app -> bucket with {
+      title 'Stores packages & serves game assets'
+      technology 'S3 API / HTTPS'
+    }
+
+    include runtime -> valkey with {
+      title 'Room coordination & endpoint registry'
+      technology 'Valkey (scoped ACL)'
+    }
+
+    include app -> github with {
+      title 'Fetches catalogs & release archives'
+      technology 'HTTPS (install-time only)'
+    }
+
+    style database, valkey, bucket, smtp, github {
       color muted
     }
+
+    autoLayout LeftRight
+  }
+
+  view context {
+    title 'System Context'
+    description 'Users, operators, and external services interacting with OpenGames.'
+
+    include player, admin, operator, browser, app, runtime, github, smtp
+
+    include browser -> app with {
+      title 'HTTPS, Socket.IO & Colyseus WS'
+    }
+
+    include app -> runtime with {
+      title 'Matchmaking & proxied gameplay'
+    }
+
+    include runtime -> app with {
+      title 'Runtime API (plugins, snapshots, results)'
+    }
+
+    include app -> github with {
+      title 'Fetches catalogs & release archives'
+      technology 'HTTPS (install-time only)'
+    }
+
+    style github, smtp {
+      color muted
+    }
+
+    autoLayout LeftRight
+  }
+
+  view browser of browser {
+    title 'Browser Client & Engine Boundary'
+    description 'Two-origin browser security boundary: Platform Shell on play.* communicates with the sandboxed Game iframe on games.* exclusively over a validated MessageChannel.'
+
+    include browser.shell.*, browser.game.*, app
+
+    include browser.game -> app with {
+      title 'Game client assets'
+      technology 'HTTPS (games.*)'
+    }
+
+    style app {
+      color muted
+    }
+
     autoLayout LeftRight
   }
 
   view app of app {
+    title 'App Container'
+    description 'Modular monolith internals inside the App container. One deployable process with clear module boundaries.'
+
     include *
+    include browser, runtime, database, valkey, bucket, smtp, github
+
+    exclude runtime -> valkey
+
+    include browser -> app.server with {
+      title 'HTTPS, Socket.IO & Colyseus WS'
+    }
+
+    include app.proxy -> runtime with {
+      multiple true
+    }
+
+    include runtime -> app.data with {
+      title 'Plugins, readiness, snapshots & results'
+      technology 'Authenticated Runtime API'
+    }
+
+    include app.jobs -> github with {
+      title 'Downloads catalogs & release .tgz archives'
+      technology 'HTTPS (install-time only)'
+    }
+
+    style database, valkey, bucket, smtp, github {
+      color muted
+    }
+
+    autoLayout LeftRight
   }
 
-  dynamic view gameplay_proxy {
-    title 'Gameplay connection'
-    browser -[colyseus]-> app 'Gameplay connection'
-    app -[colyseus]-> runtime 'Gameplay connection'
+  view runtime of runtime {
+    title 'Runtime Container (Game Server)'
+    description 'Authoritative Colyseus game server pool. Loads approved plugins via App and coordinates via Valkey — never accesses DB, S3, or GitHub directly.'
+
+    include *
+    include app.proxy, app.data, valkey.rooms, valkey.routing
+
+    exclude app.proxy -> app.data
+    exclude app.proxy -> valkey.routing
+
+    include app.proxy -> runtime.rooms with {
+      multiple true
+    }
+
+    style valkey.rooms, valkey.routing {
+      color muted
+    }
+
+    autoLayout LeftRight
+  }
+
+  view valkey of valkey {
+    title 'Valkey Coordination'
+    description 'Logical namespaces inside Valkey with scoped ACLs separating platform events, job queues, room discovery, and runtime endpoint routing.'
+
+    include *
+    include app.community, app.jobs, app.proxy, runtime.loader, runtime.rooms
+
+    exclude app.* -> runtime.*
+    exclude runtime.* -> runtime.*
+
+    autoLayout LeftRight
+  }
+
+  view ecosystem {
+    title 'Plugin Authoring & Release Ecosystem'
+    description 'How game authors and the platform team build, package, and publish pre-built .tgz releases, catalogs, and container images. Installed games have zero runtime dependency on GitHub.'
+
+    include author, platform_team, tooling.*, github.*, app.jobs, bucket
+
+    exclude app.jobs -> bucket
+
+    include app.jobs -> bucket with {
+      title 'Stores verified immutable packages & assets'
+      technology 'S3 API / HTTPS'
+    }
+
+    style bucket {
+      color muted
+    }
+
+    autoLayout LeftRight
   }
 }

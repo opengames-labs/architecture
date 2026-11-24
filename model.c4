@@ -1,107 +1,80 @@
-specification {
-  element system
-  element container
-  element component
-  element client
-  relationship http {
-    color blue
-    line solid
-  }
-  relationship socketio {
-    color amber
-    line dashed
-  }
-  relationship colyseus {
-    color green
-    line dashed
-  }
-}
-
 model {
-    browser = client 'Browser' {
-        style {
-            shape browser
-        }
+  player = actor 'Player' {
+    description 'Signs in, browses approved games, uses lobby/chat, and plays singleplayer or multiplayer matches.'
+  }
+
+  admin = actor 'Instance Admin' {
+    description 'Registers GitHub catalogs, installs game versions, and approves server plugins for activation.'
+  }
+
+  operator = actor 'Operator' {
+    description 'Operates the instance, secrets, backups, and performs controlled Game Server pool restarts and scaling.'
+  }
+
+  browser = client 'Browser' {
+    description 'Runs the React platform shell on the platform origin and each game inside a sandboxed iframe on a separate games origin.'
+  }
+
+  app = container 'App' {
+    technology 'Node.js / Fastify'
+    icon tech:nodejs
+    description 'Modular monolith handling auth, REST API, Lobby/Chat (Socket.IO), plugin management, BullMQ jobs, game WebSocket proxy, asset serving, and the authenticated Runtime API. Scales to 1..n identical replicas.'
+  }
+
+  runtime = container 'Runtime' {
+    technology 'Node.js / Colyseus'
+    icon tech:nodejs
+    description 'Game Server pool hosting authoritative Colyseus rooms and approved server plugins. Scales independently (1..n); each room belongs to one owning process.'
+  }
+
+  database = container 'Database' {
+    #storage
+    technology 'PostgreSQL'
+    icon tech:postgresql
+    description 'Shared source of truth for accounts, sessions, roles, catalogs, install jobs, chat, matches, results, and confirmed snapshots.'
+    style {
+      shape storage
     }
+  }
 
-    app = container 'App' {
-        technology 'Node.js / Alpine Linux'
-        icon tech:nodejs
-
-        frontend = component 'Frontend' {
-            technology 'React'
-            icon tech:react
-        }
-
-        server = component 'Web Server' {
-            technology 'Fastify'
-            icon tech:fastify
-        }
-
-        server -> frontend 'serves'
+  valkey = container 'Valkey' {
+    #storage
+    technology 'Valkey'
+    icon https://valkey.io/img/Valkey-logo.svg
+    description 'Internal coordination for Socket.IO streams, BullMQ queues, Colyseus Presence/Driver, runtime endpoint registration, and rate limits.'
+    style {
+      shape storage
     }
+  }
 
-    runtime = container 'Runtime' {
-        technology 'Node.js'
-        icon tech:nodejs
+  bucket = container 'Object Storage' {
+    #storage
+    technology 'S3-Compatible (Garage)'
+    icon aws:simple-storage-service
+    description 'Immutable plugin archives, served browser client assets, and media via S3 API.'
+    style {
+      shape bucket
     }
+  }
 
-    database = container 'Database' {
-        technology 'PostgreSQL'
-        icon tech:postgresql
-        style {
-            shape storage
-        }
-    }
+  smtp = external 'SMTP Server' {
+    #external
+    technology 'SMTP'
+    icon bootstrap:envelope
+    description 'Optional operator-provided mail server for account verification and password recovery.'
+  }
 
-    valkey = container 'Valkey' {
-        technology 'Valkey'
-        icon https://valkey.io/img/Valkey-logo.svg
-        style {
-            shape storage
-        }
-    }
+  github = external 'GitHub' {
+    #external
+    technology 'Catalogs & Releases'
+    icon tech:github
+    description 'Hosts official and admin-added game catalog repositories and pre-built .tgz game releases. Not required during gameplay.'
+  }
 
-    bucket = container 'S3 Bucket' {
-        technology 'Amazon S3'
-        icon aws:simple-storage-service
-        style {
-            shape bucket
-        }
-    }
-
-    smtp = container 'SMTP Server' {
-        technology 'SMTP'
-        icon bootstrap:envelope
-    }
-
-    browser -[http]-> app.server 'Request frontend' {
-        technology 'HTTPS'
-    }
-
-    browser -[http]-> app.server 'API' {
-        technology 'HTTPS'
-    }
-
-    browser -[socketio]-> app.server 'Chat / Lobby' {
-        technology 'Socket.IO'
-    }
-
-    browser -[colyseus]-> app.server 'Gameplay connection' {
-        technology 'Colyseus / WebSocket'
-        description 'Gameplay data flows through App to the owning Runtime process.'
-    }
-
-    app -[http]-> runtime 'Manage Rooms' {
-        technology 'HTTP'
-    }
-
-    app -[colyseus]-> runtime 'Gameplay connection' {
-        technology 'Colyseus / WebSocket'
-        description 'App proxies the same gameplay data between the browser and the owning Runtime process.'
-    }
-
-    runtime -[http]-> app 'Load plugins, Report readiness, Save/restore games, Submit results' {
-        technology 'HTTP'
-    }
+  // Actors
+  player -> browser 'Uses platform & plays games'
+  admin -> browser 'Manages catalogs & installs games'
+  operator -> runtime 'Drains, restarts & scales pool' {
+    technology 'Compose / Helm'
+  }
 }

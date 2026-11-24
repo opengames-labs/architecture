@@ -1,0 +1,108 @@
+model {
+  extend app {
+    server = component 'Web Server' {
+      technology 'Fastify / Node.js'
+      icon tech:fastify
+      description 'Single HTTP and WebSocket entry point inside the App container; routes requests, upgrades WebSockets, exposes health/readiness, and emits Pino logs.'
+    }
+
+    frontend = component 'Frontend Bundle' {
+      technology 'Built React SPA'
+      icon tech:react
+      description 'Pre-built static HTML, CSS, and JavaScript shipped inside the App image; React executes in the browser.'
+    }
+
+    auth = component 'Auth & Accounts' {
+      technology 'Better Auth / OpenAPI / Zod'
+      description 'Local accounts, DB-backed sessions, passkeys/MFA, optional OIDC, and server-side RBAC.'
+    }
+
+    community = component 'Lobby & Chat' {
+      technology 'Socket.IO'
+      description 'WebSocket-only platform events for lobby, chat, presence, and notifications across App replicas.'
+    }
+
+    plugins = component 'Plugin Management' {
+      technology 'Catalogs & Releases'
+      description 'Manages registered GitHub catalogs, game versions, admin approvals, and plugin configuration revisions.'
+    }
+
+    jobs = component 'Background Jobs' {
+      technology 'BullMQ / Nodemailer'
+      description 'In-process worker that downloads and validates plugin archives, uploads verified assets to S3, updates job state, and sends SMTP mail.'
+    }
+
+    proxy = component 'Game Proxy' {
+      technology 'HTTP / WebSocket Proxy'
+      description 'Authorizes match joins, reserves seats on Colyseus, resolves owning Runtime endpoints via Valkey, and proxies game WebSockets.'
+    }
+
+    data = component 'Data & Runtime API' {
+      technology 'Drizzle ORM / Internal HTTP'
+      description 'PostgreSQL persistence layer and authenticated internal Runtime API for plugin sync, readiness, snapshots, transactional claims, and results.'
+    }
+
+    assets = component 'Asset Handler' {
+      technology 'S3 Streaming'
+      description 'Serves digest-pinned browser game assets on the separate games origin with MIME, compression (e.g. Brotli), and hosting-profile headers.'
+    }
+
+    // Internal request routing from Fastify entry point
+    server -> frontend 'serves SPA bundle'
+    server -> auth 'routes auth & REST API'
+    server -> community 'upgrades Socket.IO'
+    server -> plugins 'routes admin catalog API'
+    server -> proxy 'upgrades Colyseus WS & join API'
+    server -> assets 'routes games-origin assets'
+
+    // Internal module collaboration
+    auth -> data 'reads & writes users, sessions, roles'
+    auth -> jobs 'enqueues verification & recovery mail'
+    community -> data 'persists memberships & chat'
+    plugins -> data 'persists catalogs, jobs & approvals'
+    plugins -> jobs 'enqueues install & validation jobs'
+    jobs -> data 'updates install job status & metadata'
+    proxy -> data 'checks permissions, claims & snapshots'
+
+    // Connections to Data, Coordination & External Services
+    data -[data]-> database 'Reads & writes persistent state' {
+      technology 'SQL / Drizzle'
+    }
+
+    community -[data]-> valkey.events 'Publishes & subscribes platform events' {
+      technology 'Valkey Streams / ioredis'
+    }
+
+    jobs -[data]-> valkey.queue 'Processes queued jobs & locks' {
+      technology 'BullMQ / Valkey'
+    }
+
+    proxy -[data]-> valkey.routing 'Resolves owning Runtime endpoint & limits' {
+      technology 'Valkey'
+    }
+
+    jobs -[data]-> bucket 'Stores verified plugin archives & assets' {
+      technology 'S3 API / HTTPS'
+    }
+
+    assets -[data]-> bucket 'Reads digest-pinned game files' {
+      technology 'S3 API / HTTPS'
+    }
+
+    data -[data]-> bucket 'Streams approved server bundles to Runtime' {
+      technology 'S3 API / HTTPS'
+    }
+
+    jobs -[smtp]-> smtp 'Sends account emails' {
+      technology 'SMTP / Nodemailer'
+    }
+
+    jobs -[release]-> github.catalogs 'Reads catalog indexes & release metadata' {
+      technology 'HTTPS (install-time only)'
+    }
+
+    jobs -[release]-> github.releases 'Downloads selected .tgz archives & verifies SHA-256' {
+      technology 'HTTPS (install-time only)'
+    }
+  }
+}

@@ -1,0 +1,107 @@
+model {
+  extend browser {
+    shell = component 'Platform Shell (play.*)' {
+      technology 'React / Platform Origin'
+      icon tech:react
+      description 'Owns the platform session (host-only cookies on play.*), navigation, lobby, chat, and admin UI.'
+
+      ui = component 'Platform UI' {
+        technology 'React / React Router / i18next'
+        icon tech:react
+        description 'Accounts, game catalog, lobby, chat, and instance administration screens.'
+      }
+
+      api = component 'API Client' {
+        technology 'TanStack Query / openapi-fetch'
+        description 'Typed REST/OpenAPI client, caching, and mutations.'
+      }
+
+      forms = component 'UI & Forms' {
+        technology 'Tailwind / shadcn/ui / RHF / Zod'
+        description 'Shared UI primitives and client-side form validation.'
+      }
+
+      host = component 'Host Bridge' {
+        #sdk
+        technology 'MessageChannel / postMessage'
+        description 'Embeds the game iframe, verifies origin, window reference, protocol version, and capabilities; never forwards platform cookies or sessions.'
+      }
+
+      ui -> forms 'renders UI & validates input'
+      ui -> api 'executes typed API requests'
+      ui -> host 'mounts game & syncs locale/theme'
+    }
+
+    game = component 'Game iframe (games.*)' {
+      technology 'Sandboxed Games Origin'
+      description 'Isolated iframe on games.* running one selected game profile (JS/TS, Unity Web, or Godot Web) under restrictive sandbox and CSP.'
+
+      web = component 'JS / TS Game' {
+        #engine
+        technology 'Canvas / Phaser / Three.js / React'
+        description 'Standard browser game using any JS/TS renderer.'
+      }
+
+      godot = component 'Godot Web Game' {
+        #engine
+        technology 'Godot Web / GDScript / JavaScriptBridge'
+        icon tech:godot
+        description 'Godot web export (WebGL 2 / WASM) talking to the shared JS Client SDK via JavaScriptBridge.'
+      }
+
+      unity = component 'Unity Web Game' {
+        #engine
+        technology 'Unity WebGL / C# Adapter / Colyseus C# SDK'
+        icon tech:unity
+        description 'Unity web export with a C#/.jslib platform adapter and the official Colyseus Unity SDK.'
+      }
+
+      sdk = component 'Client SDK' {
+        #sdk
+        technology '@opengames/client-sdk'
+        description 'Host-Bridge peer providing GameContext, match grants, singleplayer saves, error reporting, and JS/Godot gameplay transport.'
+      }
+
+      transport = component 'Colyseus JS SDK' {
+        technology '@colyseus/sdk'
+        description 'Consumes match seat reservations, synchronizes filtered state, sends actions, and handles reconnects.'
+      }
+
+      web -> sdk 'uses context & gameplay API'
+      godot -> sdk 'calls via JavaScriptBridge'
+      sdk -> transport 'wraps multiplayer transport'
+    }
+
+    // Two-origin browser trust boundary
+    shell.host -[bridge]-> game.sdk 'Context, match grants, saves & errors' {
+      technology 'MessageChannel (validated handshake)'
+    }
+
+    game.unity -[bridge]-> shell.host 'Context, match grants & saves' {
+      technology 'C# / .jslib Host-Bridge adapter'
+    }
+  }
+
+  // Browser -> App network channels (single source of truth)
+  browser.shell.api -[http]-> app.server 'Frontend SPA & REST API' {
+    technology 'HTTPS (play.*)'
+  }
+
+  browser.shell.ui -[socketio]-> app.server 'Lobby, chat & presence' {
+    technology 'Socket.IO (WS-only)'
+  }
+
+  browser.game -[http]-> app.server 'Digest-pinned game client assets' {
+    #detail
+    technology 'HTTPS (games.*)'
+  }
+
+  browser.game.transport -[colyseus]-> app.server 'Gameplay connection (JS / Godot)' {
+    technology 'Colyseus / WebSocket'
+  }
+
+  browser.game.unity -[colyseus]-> app.server 'Gameplay connection (Unity)' {
+    #detail
+    technology 'Colyseus Unity SDK / WebSocket'
+  }
+}

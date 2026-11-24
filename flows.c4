@@ -1,0 +1,80 @@
+views {
+  dynamic view gameplay_proxy {
+    title 'Flow: Gameplay Proxy Path'
+    description 'Every Colyseus gameplay frame flows from the browser through App directly to the single Runtime process owning the room.'
+
+    browser -[colyseus]-> app 'Gameplay connection (signed match ticket)'
+    app -[colyseus]-> runtime 'Proxied to registered owning process'
+    runtime -[colyseus]-> app 'Filtered per-player state (StateView)'
+    app -[colyseus]-> browser 'Relays game state & events'
+  }
+
+  dynamic view flow_install {
+    variant sequence
+    title 'Flow: Plugin Install & Pool Activation'
+    description 'Admin installation, offline validation, S3 storage, and controlled operator-triggered Game Pool activation.'
+
+    admin -[http]-> app.plugins '1. Select game version from catalog'
+    app.plugins -> app.jobs '2. Persist job in PostgreSQL & enqueue BullMQ task'
+    app.jobs -[release]-> github '3. Fetch catalog metadata & .tgz release archive'
+    app.jobs -> app.jobs '4. Verify SHA-256, safe paths, manifest, SDK major & hosting profile'
+
+    alt 'Validation result' {
+      when 'Valid package' {
+        app.jobs -[data]-> bucket '5a. Store immutable archive & game assets in S3'
+        admin -[http]-> app.plugins '6. Approve new pluginConfigRevision (pending activation)'
+        operator -> runtime.loader '7. Drain, checkpoint & restart Game Pool'
+        runtime.loader -[http]-> app.data '8. Fetch approved revision & server bundles, report ready'
+        app.data -> app.plugins '9. Activate pool once all ready runtimes match revision'
+      }
+      else {
+        app.jobs -> app.plugins '5b. Mark install job failed; keep existing version active'
+      }
+    }
+  }
+
+  dynamic view flow_join {
+    variant sequence
+    title 'Flow: Match Join & Targeted Routing'
+    description 'Two-origin host handshake, server-side match authorization, seat reservation, and targeted proxy routing to the room owner.'
+
+    player -> browser.shell.host '1. Start multiplayer match'
+    browser.shell.host -[bridge]-> browser.game.sdk '2. Deliver validated GameContext over MessageChannel'
+    browser.game.sdk -[http]-> app.proxy '3. Request match grant (session & membership checked)'
+    app.proxy -[http]-> runtime.rooms '4. Reserve Colyseus seat & obtain roomId + processId'
+    browser.game.sdk <- app.proxy '5. Return short-lived match ticket & proxy endpoint'
+    browser.game.sdk -[colyseus]-> app.proxy '6. Open Colyseus WebSocket with match ticket'
+    app.proxy -[data]-> valkey.routing '7. Verify ticket & resolve processId -> internal endpoint'
+    app.proxy -[colyseus]-> runtime.rooms '8. Proxy WebSocket directly to owning Runtime process'
+    browser.game.sdk <- runtime.rooms '9. Synchronize filtered game state & process validated actions'
+  }
+
+  dynamic view flow_restore {
+    variant sequence
+    title 'Flow: Crash Recovery & Snapshot Restore'
+    description 'Transactional match claim, digest-pinned snapshot restore, and ownerEpoch fencing after a Game Server process crash.'
+
+    player -> browser.game.sdk '1. Reopen match after Game Server crash'
+    browser.game.sdk -[http]-> app.proxy '2. Request restore join'
+    app.proxy -> app.data '3. Acquire transactional ownership claim'
+    app.data -[data]-> database '4. Increment ownerEpoch & load last confirmed snapshot'
+    app.data -> app.data '5. Verify exact package SHA-256 & compatible saveSchemaVersion'
+
+    alt 'Snapshot & compatibility check' {
+      when 'Compatible snapshot found' {
+        app.proxy -[http]-> runtime.rooms '6a. Recreate room from snapshot (state, timers, RNG) with new ownerEpoch'
+        browser.game.sdk <- app.proxy '7. Issue new match ticket & snapshot timestamp'
+        browser.game.sdk -[colyseus]-> app.proxy '8. Connect to new owning Runtime process'
+        app.proxy -[colyseus]-> runtime.rooms '9. Resume authoritative gameplay'
+      }
+      else {
+        browser.game.sdk <- app.proxy '6b. Return explicit error (never silently start an empty match)'
+      }
+    }
+
+    opt 'Late write from crashed/stale Runtime' {
+      runtime.sdk -[http]-> app.data 'Attempt snapshot write with old ownerEpoch'
+      runtime.sdk <- app.data 'Reject stale write (fenced by ownerEpoch & revision)'
+    }
+  }
+}

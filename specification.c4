@@ -1,0 +1,132 @@
+specification {
+  tag external
+  tag storage
+  tag sdk
+  tag engine
+  tag plugin
+  tag detail
+
+  element actor {
+    notation 'Person'
+    style {
+      shape person
+      color slate
+    }
+  }
+
+  element system {
+    notation 'Software System'
+  }
+
+  element external {
+    notation 'External System'
+    style {
+      color muted
+    }
+  }
+
+  element container {
+    notation 'Container'
+  }
+
+  element component {
+    notation 'Component'
+  }
+
+  element client {
+    notation 'Browser Client'
+    style {
+      shape browser
+    }
+  }
+
+  element package {
+    notation 'Library / Package'
+    style {
+      color indigo
+    }
+  }
+
+  element artifact {
+    notation 'Artifact / Release'
+    style {
+      shape document
+      color amber
+    }
+  }
+
+  deploymentNode host {
+    notation 'Host'
+    style {
+      color slate
+    }
+  }
+
+  deploymentNode cluster {
+    notation 'Kubernetes Cluster'
+    style {
+      color slate
+    }
+  }
+
+  deploymentNode zone {
+    notation 'Network / Namespace'
+    style {
+      color muted
+    }
+  }
+
+  deploymentNode pod {
+    notation 'Container / Pod'
+  }
+
+  deploymentNode service {
+    notation 'Ingress / Service'
+    style {
+      color secondary
+    }
+  }
+
+  deploymentNode volume {
+    notation 'Persistent Volume'
+    style {
+      shape storage
+      color muted
+    }
+  }
+
+  relationship http {
+    color blue
+    line solid
+  }
+
+  relationship socketio {
+    color amber
+    line dashed
+  }
+
+  relationship colyseus {
+    color green
+    line dashed
+  }
+
+  relationship data {
+    color slate
+    line solid
+  }
+
+  relationship bridge {
+    color indigo
+    line dotted
+  }
+
+  relationship release {
+    color amber
+    line dotted
+  }
+
+  relationship smtp {
+    color slate
+    line dashed
+  }
+}

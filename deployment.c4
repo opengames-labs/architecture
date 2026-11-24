@@ -1,0 +1,180 @@
+deployment {
+  // Single-Host Docker Compose Deployment
+  host docker_env 'Docker Host (Docker Compose)' {
+    technology 'Single Host / Docker Compose'
+    description 'Standard self-hosted setup: Caddy reverse proxy, one App container, one Runtime container, and persistent data containers on a single host. No Docker socket access for App.'
+
+    caddy = service 'Caddy Reverse Proxy' {
+      technology 'TLS, play.* & games.*, WS upgrade'
+      description 'Terminates TLS, routes play.* (platform) and games.* (isolated game assets) to App, and supports WebSocket upgrades.'
+    }
+
+    app_svc = pod 'App Container' {
+      technology 'ghcr.io/opengames-labs/app'
+      instanceOf app
+    }
+
+    runtime_svc = pod 'Runtime Container' {
+      technology 'ghcr.io/opengames-labs/runtime'
+      instanceOf runtime
+    }
+
+    data_zone = zone 'Data Services & Volumes' {
+      pg = pod 'PostgreSQL' {
+        instanceOf database
+      }
+      vk = pod 'Valkey (AOF)' {
+        instanceOf valkey
+      }
+      s3 = pod 'Garage (S3)' {
+        instanceOf bucket
+      }
+      pg_vol = volume 'pg_data'
+      vk_vol = volume 'valkey_data'
+      s3_vol = volume 'garage_data'
+
+      pg -[data]-> pg_vol 'persists'
+      vk -[data]-> vk_vol 'persists (AOF)'
+      s3 -[data]-> s3_vol 'persists'
+    }
+    caddy -[http]-> app_svc 'Forwards play.* & games.* (isolated origins)'
+    app_svc -[colyseus]-> runtime_svc 'Matchmaking & proxied gameplay WS'
+    runtime_svc -[http]-> app_svc 'Authenticated Runtime API'
+    app_svc -[data]-> data_zone.pg 'SQL / Drizzle'
+    app_svc -[data]-> data_zone.vk 'Events, jobs & routing'
+    app_svc -[data]-> data_zone.s3 'S3 packages & assets'
+    runtime_svc -[data]-> data_zone.vk 'Presence & registry'
+  }
+
+  docker_client = pod 'Player / Admin Browser' {
+    instanceOf browser
+  }
+
+  docker_client -[http]-> docker_env.caddy 'HTTPS (play.* & games.*), Socket.IO & Colyseus WS'
+
+  // Existing Kubernetes Cluster Deployment (Helm)
+  cluster k8s_env 'Kubernetes Cluster (Helm)' {
+    technology 'Existing Cluster (no custom operator)'
+    description 'Horizontally scaled setup using the same two OCI images. App and Runtime scale independently without giving App any Kubernetes API permissions.'
+
+    ingress = service 'Ingress / Gateway' {
+      technology 'TLS, play.* & games.*, WS upgrade'
+      description 'Existing cluster Ingress/Gateway handling TLS, dual-origin host routing, and long-lived WebSocket timeouts.'
+    }
+
+    app_service = service 'App Service' {
+      technology 'ClusterIP'
+      description 'Distributes HTTP and new WebSocket connections across App pods.'
+    }
+
+    app_deploy = zone 'App Deployment (1..n, optional HPA)' {
+      app_pod_1 = pod 'App Pod 1' {
+        app_1 = instanceOf app
+      }
+      app_pod_2 = pod 'App Pod 2' {
+        app_2 = instanceOf app
+      }
+    }
+
+    runtime_service = service 'Runtime Service' {
+      technology 'ClusterIP (Matchmaking only)'
+      description 'Used only for initial seat reservation; active room WebSockets bypass round-robin and go directly to the owning pod.'
+    }
+
+    runtime_deploy = zone 'Runtime Deployment (1..n, controlled drain)' {
+      rt_pod_1 = pod 'Runtime Pod 1' {
+        rt_1 = instanceOf runtime
+      }
+      rt_pod_2 = pod 'Runtime Pod 2' {
+        rt_2 = instanceOf runtime
+      }
+    }
+
+    data_deploy = zone 'Shared Data Services (PVCs / Managed)' {
+      pg_k8s = pod 'PostgreSQL + PVC' {
+        instanceOf database
+      }
+      vk_k8s = pod 'Valkey + PVC' {
+        instanceOf valkey
+      }
+      s3_k8s = pod 'S3 / Garage + PVC' {
+        instanceOf bucket
+      }
+    }
+
+    ingress -[http]-> app_service 'Forwards play.* & games.*'
+    app_service -[http]-> app_deploy 'Balances HTTP & new WS'
+    app_deploy -[http]-> runtime_service 'Matchmaking & seat reservation'
+    runtime_service -[http]-> runtime_deploy 'Any ready Runtime pod'
+    app_deploy -[colyseus]-> runtime_deploy.rt_pod_1 'Targeted room WS (via Valkey registry)'
+    app_deploy -[colyseus]-> runtime_deploy.rt_pod_2 'Targeted room WS (via Valkey registry)'
+    runtime_deploy -[http]-> app_service 'Authenticated Runtime API'
+    app_deploy -[data]-> data_deploy 'PostgreSQL, Valkey & S3'
+    runtime_deploy -[data]-> data_deploy.vk_k8s 'Valkey (Presence & Registry)'
+  }
+
+  k8s_client = pod 'Player / Admin Browser' {
+    instanceOf browser
+  }
+
+  k8s_client -[http]-> k8s_env.ingress 'HTTPS (play.* & games.*), Socket.IO & Colyseus WS'
+}
+
+views {
+  deployment view deploy_docker {
+    title 'Deployment: Docker Compose (Single Host)'
+    description 'Self-hosted single-host layout using Caddy, one App container, one Runtime container, and persistent PostgreSQL, Valkey, and Garage volumes.'
+
+    include docker_client, docker_env, docker_env.caddy, docker_env.app_svc, docker_env.runtime_svc, docker_env.data_zone, docker_env.data_zone.*
+
+    exclude docker_client -> docker_env.app_svc
+    exclude docker_env.app_svc.* -> *
+    exclude docker_env.runtime_svc.* -> *
+
+    include docker_env.app_svc -> docker_env.runtime_svc with {
+      title 'Matchmaking & proxied gameplay WS'
+    }
+    include docker_env.app_svc -> docker_env.data_zone.pg with {
+      title 'SQL / Drizzle'
+    }
+    include docker_env.app_svc -> docker_env.data_zone.vk with {
+      title 'Events, jobs & routing'
+    }
+    include docker_env.app_svc -> docker_env.data_zone.s3 with {
+      title 'S3 packages & assets'
+    }
+    include docker_env.runtime_svc -> docker_env.data_zone.vk with {
+      title 'Presence & registry'
+    }
+
+    autoLayout LeftRight
+  }
+
+  deployment view deploy_kubernetes {
+    title 'Deployment: Kubernetes (Multi-Replica)'
+    description 'Independently scaled App and Runtime pods on an existing cluster. Matchmaking uses ClusterIP; active gameplay WebSockets route directly to the registered owning pod.'
+
+    include k8s_client, k8s_env, k8s_env.ingress, k8s_env.app_service, k8s_env.app_deploy, k8s_env.app_deploy.*, k8s_env.runtime_service, k8s_env.runtime_deploy, k8s_env.runtime_deploy.*, k8s_env.data_deploy, k8s_env.data_deploy.*
+
+    exclude k8s_client -> k8s_env.app_deploy.**
+    exclude k8s_env.app_deploy.** -> k8s_env.runtime_deploy.**
+    exclude k8s_env.runtime_deploy.** -> k8s_env.app_deploy.**
+    exclude k8s_env.app_deploy.** -> k8s_env.data_deploy.**
+    exclude k8s_env.runtime_deploy.** -> k8s_env.data_deploy.**
+
+    include k8s_env.app_deploy -> k8s_env.runtime_deploy.rt_pod_1 with {
+      title 'Targeted room WS (via Valkey registry)'
+    }
+    include k8s_env.app_deploy -> k8s_env.runtime_deploy.rt_pod_2 with {
+      title 'Targeted room WS (via Valkey registry)'
+    }
+    include k8s_env.app_deploy -> k8s_env.data_deploy with {
+      title 'PostgreSQL, Valkey & S3'
+    }
+    include k8s_env.runtime_deploy -> k8s_env.data_deploy.vk_k8s with {
+      title 'Valkey (Presence & Registry)'
+    }
+
+    autoLayout LeftRight
+  }
+}

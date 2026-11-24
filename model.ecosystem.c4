@@ -1,0 +1,83 @@
+model {
+  author = actor 'Game Author' {
+    description 'Develops browser games against public OpenGames SDKs, packages pre-built exports with Plugin CLI, and publishes releases.'
+  }
+
+  platform_team = actor 'Platform Team' {
+    description 'Builds and maintains OpenGames App, Runtime, SDKs, Engine Adapters, Plugin CLI, and the official catalog.'
+  }
+
+  tooling = system 'OpenGames SDKs & Tooling' {
+    description 'Public TypeScript contracts, SDK libraries, engine adapters, and author-side packaging CLI. Libraries and build tools — not additional runtime containers.'
+
+    protocol = package '@opengames/protocol' {
+      #sdk
+      technology 'TypeScript / Zod Schemas'
+      description 'Versioned message, error, GameContext, and compatibility contracts shared across platform, SDKs, and adapters.'
+    }
+
+    client_sdk = package '@opengames/client-sdk' {
+      #sdk
+      technology 'TypeScript / Browser ESM'
+      description 'Host-Bridge peer inside the game iframe; wraps @colyseus/sdk for JS and Godot clients.'
+    }
+
+    server_sdk = package '@opengames/server-sdk' {
+      #sdk
+      technology 'TypeScript / Node ESM'
+      description 'Plugin lifecycle, game context, snapshot/restore hooks, and authenticated Runtime API bindings.'
+    }
+
+    adapters = package 'Engine Adapters' {
+      #sdk
+      technology 'Unity (C# / .jslib) & Godot (GDScript)'
+      description 'Thin engine bindings connecting Unity Web and Godot Web exports to the OpenGames Host-Bridge.'
+    }
+
+    plugin_cli = package '@opengames/plugin-cli' {
+      #sdk
+      technology 'CLI (Author / CI only)'
+      description 'Validates manifest.json and pre-built exports, builds tar+gzip (.tgz) archives, and computes external SHA-256 and sizeBytes metadata.'
+    }
+
+    client_sdk -> protocol 'implements'
+    server_sdk -> protocol 'implements'
+    adapters -> protocol 'implements'
+    adapters -> client_sdk 'bridges Godot via JS SDK'
+    plugin_cli -> protocol 'validates manifest & SDK major'
+  }
+
+  extend github {
+    catalogs = artifact 'GitHub Catalogs' {
+      technology 'repository.json & games/*.json'
+      icon tech:github
+      description 'Official and community catalog repositories linking game versions to release URLs, SHA-256 digests, and archive sizes.'
+    }
+
+    releases = artifact 'GitHub Releases' {
+      technology '<game>-<version>.tgz'
+      icon tech:github
+      description 'Immutable pre-built plugin archives containing manifest.json, client/, optional server/index.mjs, and licenses/. No npm install or source build on the host.'
+    }
+
+    ghcr = artifact 'GHCR OCI Images' {
+      technology 'ghcr.io/opengames-labs/*'
+      icon tech:docker
+      description 'Two platform container images (App with built React SPA + Game Server Runtime) under github.com/opengames-labs, usable on both Docker Compose and Kubernetes.'
+    }
+
+    catalogs -[release]-> releases 'references version, URL & SHA-256'
+  }
+
+  // Author & Platform Team workflows
+  author -> tooling.client_sdk 'builds client (JS / Godot / Unity)'
+  author -> tooling.server_sdk 'writes authoritative TS rules (multiplayer)'
+  author -> tooling.adapters 'integrates Unity / Godot'
+  author -> tooling.plugin_cli 'validates & packages .tgz release'
+  tooling.plugin_cli -[release]-> github.releases 'publishes pre-built .tgz archive'
+  author -[release]-> github.catalogs 'submits catalog entry with SHA-256'
+
+  platform_team -> tooling 'develops & versions SDKs and CLI'
+  platform_team -[release]-> github.ghcr 'publishes App & Runtime OCI images'
+  platform_team -[release]-> github.catalogs 'curates official catalog'
+}

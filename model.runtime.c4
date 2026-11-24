@@ -1,0 +1,88 @@
+model {
+  extend runtime {
+    node = component 'Runtime Process' {
+      technology 'Node.js / Pino'
+      icon tech:nodejs
+      description 'Host process lifecycle, health/readiness reporting, graceful drain, and structured logging; multiple rooms share one process.'
+    }
+
+    loader = component 'Plugin Loader' {
+      technology 'ESM Loader'
+      description 'Fetches approved plugin revision and server bundles from App, verifies SHA-256 and SDK API major, imports modules, and registers the process endpoint.'
+    }
+
+    installed = component 'Installed Server Plugins' {
+      #plugin
+      technology 'server/index.mjs (ESM)'
+      description 'Admin-approved, pre-built game server modules pinned by exact package SHA-256 digest.'
+    }
+
+    rooms = component 'Colyseus Rooms' {
+      technology 'Colyseus / StateView'
+      description 'Authoritative game room instances, action validation, timers, and per-player filtered views.'
+    }
+
+    sdk = component 'Server SDK' {
+      #sdk
+      technology '@opengames/server-sdk'
+      description 'Plugin lifecycle contract, game context, snapshot/restore hooks, and authenticated Runtime API client.'
+    }
+
+    // Internal Runtime flow
+    node -> loader 'initializes on startup'
+    node -> rooms 'hosts Colyseus server & drain'
+    loader -> installed 'verifies digest & imports'
+    loader -> rooms 'registers room factories'
+    installed -> sdk 'implements plugin contract'
+    rooms -> sdk 'persists snapshots & submits results'
+
+    // Cross-container Runtime edges (never direct to DB, S3, or GitHub)
+    loader -[http]-> app.data 'Pulls approved plugin revision & bundles, reports readiness' {
+      technology 'Authenticated Runtime API'
+    }
+
+    sdk -[http]-> app.data 'Saves snapshots & submits match results' {
+      technology 'Authenticated Runtime API'
+    }
+
+    loader -[data]-> valkey.routing 'Registers internal process endpoint' {
+      technology 'Valkey (scoped ACL)'
+    }
+
+    rooms -[data]-> valkey.rooms 'Coordinates room discovery & matchmaking' {
+      technology 'Colyseus Presence/Driver'
+    }
+  }
+
+  // App Proxy <-> Runtime Rooms
+  app.proxy -[http]-> runtime.rooms 'Matchmaking & seat reservation' {
+    technology 'Internal HTTP / Colyseus'
+  }
+
+  app.proxy -[colyseus]-> runtime.rooms 'Proxied gameplay connection' {
+    technology 'Colyseus / WebSocket'
+    description 'App verifies match ticket and routes directly to the owning Runtime process.'
+  }
+
+  extend valkey {
+    events = component 'Platform Events' {
+      technology 'Socket.IO Streams'
+      description 'Distributes lobby, chat, presence, and notifications across App replicas.'
+    }
+
+    queue = component 'Job Queue' {
+      technology 'BullMQ'
+      description 'Queues plugin download/validation and email jobs; authoritative job state stays in PostgreSQL.'
+    }
+
+    rooms = component 'Room Coordination' {
+      technology 'Colyseus Presence/Driver'
+      description 'Shared room lookup and process coordination across Game Server replicas.'
+    }
+
+    routing = component 'Runtime Registry & Limits' {
+      technology 'Key-Value / ACL Scoped'
+      description 'Authenticated mapping from Runtime process IDs to internal container/pod endpoints, plus rate limits.'
+    }
+  }
+}
